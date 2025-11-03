@@ -59,18 +59,17 @@ local math_max = math.max
 local math_abs = math.abs
 local math_sqrt = math.sqrt
 local table_insert = table.insert
+local table_remove = table.remove
 local table_sort = table.sort
 local ipairs = ipairs
 
 -- =============================================
 -- Utilities
 -- =============================================
-local function lerp(a, b, t)
-    return a + (b - a) * (t < 1 and t or 1)
-end
+local function lerp(a, b, t) return a + (b - a) * (t < 1 and t or 1) end
 
 local function setRandomSeed()
-    love.math.setRandomSeed(math.floor(love.timer.getTime() * 1000) % 999999)
+    love.math.setRandomSeed(math_floor(love.timer.getTime() * 1000) % 999999)
 end
 
 local function drawVerticalGradient(x, y, w, h, topCol, bottomCol)
@@ -152,13 +151,11 @@ local function checkIntersections()
     return false
 end
 
-local function checkWinCondition()
-    return not checkIntersections()
-end
+local function checkWinCondition() return not checkIntersections() end
 
--- =============================================
--- Level generation (kept core behaviour but cleaned)
--- =============================================
+-- =================
+-- Level generation
+-- =================
 local function generateRopePath(gridSize, startSide)
     local startX, startY
     if startSide == 1 then
@@ -339,7 +336,7 @@ local function updateParticles(dt)
         local p = gameState.particles[i]
         p.ttl = p.ttl - dt
         if p.ttl <= 0 then
-            table.remove(gameState.particles, i)
+            table_remove(gameState.particles, i)
         else
             p.vy = p.vy + (300 * dt)
             p.x = p.x + p.vx * dt
@@ -538,14 +535,10 @@ local function findClickedPoint(x, y)
         end
     end
 
-    if #candidates == 0 then
-        return nil, nil
-    end
+    if #candidates == 0 then return nil, nil end
 
     -- Sort by distance (nearest wins)
-    table_sort(candidates, function(a, b)
-        return a.dist < b.dist
-    end)
+    table_sort(candidates, function(a, b) return a.dist < b.dist end)
 
     local best = candidates[1]
     return best.rope, best.point
