@@ -270,13 +270,16 @@ local function generateLevel(level)
     if gameState.win then generateLevel(level) end
 end
 
+local function add(out, x, y)
+    table_insert(out, { x = x, y = y })
+end
+
 -- =============================================
 -- Smoothing helper: catmull-rom style interpolation to draw animated ropes
 -- =============================================
 local function smoothPath(pts, resolution)
     -- pts are grid coords; convert to screen coords and produce smoothed list
     local out = {}
-    local function add(x, y) table_insert(out, { x = x, y = y }) end
 
     if #pts == 0 then return out end
     -- convert to screen
@@ -293,17 +296,17 @@ local function smoothPath(pts, resolution)
     for i = 1, #screenPts - 1 do
         local a = screenPts[i]
         local b = screenPts[i + 1]
-        add(a.x, a.y)
+        add(out, a.x, a.y)
         for t = 1, resolution - 1 do
             local tt = t / resolution
             local ix = lerp(a.x, b.x, tt)
             local iy = lerp(a.y, b.y, tt)
-            add(ix, iy)
+            add(out, ix, iy)
         end
     end
     -- add last
     local last = screenPts[#screenPts]
-    add(last.x, last.y)
+    add(out, last.x, last.y)
 
     -- gentle smoothing pass (moving average)
     for _ = 1, 1 do
