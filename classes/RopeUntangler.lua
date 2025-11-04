@@ -8,8 +8,12 @@ local math_floor = math.floor
 local math_max = math.max
 local math_sqrt = math.sqrt
 local math_min = math.min
+local math_cos = math.cos
+local math_sin = math.sin
+local math_pi = math.pi
 
 local lg = love.graphics
+local love_random = love.math.random
 
 local RopeUntangler = {}
 RopeUntangler.__index = RopeUntangler
@@ -54,7 +58,8 @@ local function createRopeSegments(self, x1, y1, x2, y2)
 end
 
 local function resolveRopeCollisions(self)
-    local iterations = 3
+    local iterations = 2 -- Reduced from 3 to minimize oscillation
+    local pushForce = 0.8 -- Reduced force for more stable behavior
 
     for _ = 1, iterations do
         for i = 1, #self.ropes do
@@ -86,8 +91,7 @@ local function resolveRopeCollisions(self)
                             local u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / den
 
                             if t >= 0 and t <= 1 and u >= 0 and u <= 1 then
-                                -- Push segments away from each other
-                                local pushForce = 2.0
+                                -- Calculate separation vector
                                 local dx = (seg2a.x + seg2b.x) * 0.5 - (seg1a.x + seg1b.x) * 0.5
                                 local dy = (seg2a.y + seg2b.y) * 0.5 - (seg1a.y + seg1b.y) * 0.5
                                 local dist = math_sqrt(dx * dx + dy * dy)
@@ -95,24 +99,39 @@ local function resolveRopeCollisions(self)
                                 if dist > 0 then
                                     dx, dy = dx / dist, dy / dist
 
+                                    -- Apply push with damping based on segment distance from ends
+                                    local damping1 = math_min(k / (#rope1.segments - 1), 1.0)
+                                    local damping2 = math_min(l / (#rope2.segments - 1), 1.0)
+
+                                    local actualPushForce = pushForce * 0.5
+
                                     -- Apply push to rope1 segments (avoid moving pinned ends)
                                     if k > 1 then
-                                        seg1a.x = seg1a.x - dx * pushForce * 0.5
-                                        seg1a.y = seg1a.y - dy * pushForce * 0.5
+                                        seg1a.x = seg1a.x - dx * actualPushForce * damping1
+                                        seg1a.y = seg1a.y - dy * actualPushForce * damping1
+                                        -- Also update old position to maintain velocity consistency
+                                        seg1a.oldX = seg1a.oldX - dx * actualPushForce * damping1 * 0.5
+                                        seg1a.oldY = seg1a.oldY - dy * actualPushForce * damping1 * 0.5
                                     end
                                     if k < #rope1.segments - 1 then
-                                        seg1b.x = seg1b.x - dx * pushForce * 0.5
-                                        seg1b.y = seg1b.y - dy * pushForce * 0.5
+                                        seg1b.x = seg1b.x - dx * actualPushForce * damping1
+                                        seg1b.y = seg1b.y - dy * actualPushForce * damping1
+                                        seg1b.oldX = seg1b.oldX - dx * actualPushForce * damping1 * 0.5
+                                        seg1b.oldY = seg1b.oldY - dy * actualPushForce * damping1 * 0.5
                                     end
 
                                     -- Apply push to rope2 segments (avoid moving pinned ends)
                                     if l > 1 then
-                                        seg2a.x = seg2a.x + dx * pushForce * 0.5
-                                        seg2a.y = seg2a.y + dy * pushForce * 0.5
+                                        seg2a.x = seg2a.x + dx * actualPushForce * damping2
+                                        seg2a.y = seg2a.y + dy * actualPushForce * damping2
+                                        seg2a.oldX = seg2a.oldX + dx * actualPushForce * damping2 * 0.5
+                                        seg2a.oldY = seg2a.oldY + dy * actualPushForce * damping2 * 0.5
                                     end
                                     if l < #rope2.segments - 1 then
-                                        seg2b.x = seg2b.x + dx * pushForce * 0.5
-                                        seg2b.y = seg2b.y + dy * pushForce * 0.5
+                                        seg2b.x = seg2b.x + dx * actualPushForce * damping2
+                                        seg2b.y = seg2b.y + dy * actualPushForce * damping2
+                                        seg2b.oldX = seg2b.oldX + dx * actualPushForce * damping2 * 0.5
+                                        seg2b.oldY = seg2b.oldY + dy * actualPushForce * damping2 * 0.5
                                     end
                                 end
                             end
@@ -132,12 +151,20 @@ local function updateRopePhysics(self)
         local node2 = self.nodes[rope.node2]
 
         if node1 and node2 then
-            -- Update rope segments with verlet integration
             local segments = rope.segments
 
             -- Pin first and last segments to nodes
             segments[1].x, segments[1].y = node1.x, node1.y
             segments[#segments].x, segments[#segments].y = node2.x, node2.y
+
+            -- Apply damping to all segments (except pinned ends)
+            for i = 2, #segments - 1 do
+                local seg = segments[i]
+                local damping = 0.98 -- Add slight damping
+                local vx = (seg.x - seg.oldX) * damping
+                local vy = (seg.y - seg.oldY) * damping
+                seg.oldX, seg.oldY = seg.x - vx, seg.y - vy
+            end
 
             -- Apply constraints
             for i = 1, #segments - 1 do
@@ -204,7 +231,7 @@ end
 
 local function shuffle(t)
     for i = #t, 2, -1 do
-        local j = love.math.random(i)
+        local j = love_random(i)
         t[i], t[j] = t[j], t[i]
     end
     return t
@@ -230,10 +257,10 @@ local function generateLevel(self, level)
     local minRadius = maxRadius * 0.5
 
     for i = 1, numNodes do
-        local angle = love.math.random() * math.pi * 2
-        local r = love.math.random(minRadius, maxRadius)
-        local x = centerX + math.cos(angle) * r + love.math.random(-60, 60)
-        local y = centerY + math.sin(angle) * r + love.math.random(-60, 60)
+        local angle = love_random() * math_pi * 2
+        local r = love_random(minRadius, maxRadius)
+        local x = centerX + math_cos(angle) * r + love_random(-60, 60)
+        local y = centerY + math_sin(angle) * r + love_random(-60, 60)
 
         -- Clamp within screen bounds
         x = math_max(margin, math_min(self.screenWidth - margin, x))
@@ -266,9 +293,9 @@ local function generateLevel(self, level)
                 node1 = node1.id,
                 node2 = node2.id,
                 color = {
-                    love.math.random(0.6, 0.9),
-                    love.math.random(0.6, 0.9),
-                    love.math.random(0.6, 0.9)
+                    love_random(0.6, 0.9),
+                    love_random(0.6, 0.9),
+                    love_random(0.6, 0.9)
                 },
                 segments = createRopeSegments(self, node1.x, node1.y, node2.x, node2.y)
             })
@@ -278,7 +305,7 @@ local function generateLevel(self, level)
     -- Randomly fix a few nodes (for challenge)
     local numFixed = math_min(math_floor(level / 3), math_floor(numNodes / 3))
     for _ = 1, numFixed do
-        local node = self.nodes[love.math.random(1, #self.nodes)]
+        local node = self.nodes[love_random(1, #self.nodes)]
         if not node.fixed then
             node.fixed = true
             node.color = { 0.5, 0.5, 0.7 }
@@ -287,8 +314,8 @@ local function generateLevel(self, level)
 
     -- Add a slight "tangle shake" to intensify crossings
     for _, node in ipairs(self.nodes) do
-        node.x = node.x + love.math.random(-40, 40)
-        node.y = node.y + love.math.random(-40, 40)
+        node.x = node.x + love_random(-40, 40)
+        node.y = node.y + love_random(-40, 40)
     end
 
     updateCrossings(self)
